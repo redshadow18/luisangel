@@ -6,8 +6,8 @@ import sys
 pygame.init()
 
 # Configuración de la pantalla
-ANCHO = 600  # Ancho reducido
-ALTO = 600
+ANCHO = 600
+ALTO = 800  # Ventana más alta para dar más tiempo de reacción
 PANTALLA = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption("Juego de Autos")
 
@@ -19,25 +19,39 @@ VERDE = (0, 255, 0)
 GRIS = (100, 100, 100)
 AMARILLO = (255, 255, 0)
 AZUL = (0, 0, 255)
+NARANJA = (255, 165, 0)
+MORADO = (128, 0, 128)
+CIAN = (0, 255, 255)
 
 # Fuentes
 FUENTE_GRANDE = pygame.font.SysFont(None, 72)
 FUENTE_MEDIANA = pygame.font.SysFont(None, 48)
 FUENTE_PEQUEÑA = pygame.font.SysFont(None, 36)
 
+# Configuración de carriles
+NUM_CARRILES = 4
+MARGEN_LATERAL = 20
+ANCHO_AREA_JUEGO = ANCHO - 2 * MARGEN_LATERAL
+ANCHO_CARRIL = ANCHO_AREA_JUEGO / NUM_CARRILES
+
 # Configuración del jugador (auto)
 class Auto:
     def __init__(self):
         self.ancho = 50
         self.alto = 100
-        self.x = ANCHO // 2 - self.ancho // 2
-        self.y = ALTO - self.alto - 20
+        self.carril_actual = NUM_CARRILES // 2  # Comenzar en un carril del medio
+        self.x = self.calcular_posicion_carril(self.carril_actual)
+        self.y = ALTO - self.alto - 60  # Posición más alta para dar más espacio de juego
         self.velocidad = 8
         
         # Color principal azul brillante para el jugador
         self.color_principal = (30, 144, 255)  # Azul dodger
         self.imagen = pygame.Surface((self.ancho, self.alto))
         self.imagen.fill(self.color_principal)
+        
+    def calcular_posicion_carril(self, carril):
+        # Calcula la posición centrada en el carril especificado
+        return MARGEN_LATERAL + carril * ANCHO_CARRIL + (ANCHO_CARRIL - self.ancho) / 2
         
     def dibujar(self, pantalla):
         # Dibujar el cuerpo del auto (más realista)
@@ -74,10 +88,12 @@ class Auto:
         pygame.draw.line(pantalla, NEGRO, (self.x + 5, self.y + 75), (self.x + self.ancho - 5, self.y + 75), 2)
         
     def mover(self, direccion):
-        if direccion == "izquierda" and self.x > 0:
-            self.x -= self.velocidad
-        if direccion == "derecha" and self.x < ANCHO - self.ancho:
-            self.x += self.velocidad
+        if direccion == "izquierda" and self.carril_actual > 0:
+            self.carril_actual -= 1
+            self.x = self.calcular_posicion_carril(self.carril_actual)
+        if direccion == "derecha" and self.carril_actual < NUM_CARRILES - 1:
+            self.carril_actual += 1
+            self.x = self.calcular_posicion_carril(self.carril_actual)
             
     def obtener_rect(self):
         return pygame.Rect(self.x, self.y, self.ancho, self.alto)
@@ -98,22 +114,25 @@ COLORES_AUTOS = [
 
 # Obstáculos (otros autos)
 class Obstaculo:
-    def __init__(self, velocidad_base=5, factor_dificultad=0):
+    def __init__(self, velocidad_base=5, nivel=1, carril=None):
         self.ancho = 50
         self.alto = 100
         
-        # Crear carriles más aleatorios
-        margen = 20
-        area_disponible = ANCHO - 2 * margen - self.ancho
-        # Generar una posición más aleatoria dentro del área disponible
-        self.x = margen + random.randint(0, area_disponible)
+        # Si se especifica un carril, colocar el obstáculo en ese carril
+        if carril is not None:
+            # Calculamos la posición x basada en el carril
+            self.x = MARGEN_LATERAL + carril * ANCHO_CARRIL + (ANCHO_CARRIL - self.ancho) / 2
+        else:
+            # Posición aleatoria (comportamiento original)
+            area_disponible = ANCHO - 2 * MARGEN_LATERAL - self.ancho
+            self.x = MARGEN_LATERAL + random.randint(0, area_disponible)
         
         # Posición inicial aleatoria (algunos autos aparecerán más arriba que otros)
         self.y = -self.alto - random.randint(0, 200)
         
-        # La velocidad ahora se calcula según el factor de dificultad
-        velocidad_minima = min(velocidad_base + factor_dificultad // 5, 15)
-        velocidad_maxima = min(velocidad_minima + 5, 20)
+        # La velocidad ahora se calcula según el nivel
+        velocidad_minima = min(velocidad_base + nivel, 15)
+        velocidad_maxima = min(velocidad_minima + 3, 20)
         self.velocidad = random.randint(velocidad_minima, velocidad_maxima)
         
         # Seleccionar un color de la lista predefinida
@@ -179,22 +198,20 @@ class Obstaculo:
 
 # Clase para la carretera
 class Carretera:
-    def __init__(self):
+    def __init__(self, num_carriles=4):
         self.ancho_carril = 10
         self.espacio_carril = 50
         self.y = 0
         self.velocidad_base = 10
         self.velocidad = self.velocidad_base
+        self.num_carriles = num_carriles
         
         # Color de la carretera (un poco más oscuro)
         self.color_carretera = (80, 80, 80)
         
-        # Posiciones de las líneas laterales
-        self.margen_lateral = 10
-        
-    def actualizar(self, factor_dificultad=0):
-        # Aumentar la velocidad de la carretera según la puntuación
-        self.velocidad = self.velocidad_base + factor_dificultad // 10
+    def actualizar(self, nivel=1):
+        # Aumentar la velocidad de la carretera según el nivel
+        self.velocidad = self.velocidad_base + nivel
         self.y += self.velocidad
         if self.y > self.espacio_carril:
             self.y = 0
@@ -203,17 +220,23 @@ class Carretera:
         # Fondo de la carretera
         pantalla.fill(self.color_carretera)
         
-        # Dibujar línea central segmentada (amarilla)
-        y = -self.espacio_carril + self.y
-        while y < ALTO:
-            pygame.draw.rect(pantalla, AMARILLO, (ANCHO//2 - self.ancho_carril//2, y, self.ancho_carril, 30))
-            y += self.espacio_carril
+        # Dibujar carriles
+        ancho_area_juego = ANCHO - 2 * MARGEN_LATERAL
+        ancho_carril = ancho_area_juego / self.num_carriles
+        
+        # Dibujar líneas de carriles (blancas segmentadas)
+        for i in range(1, self.num_carriles):
+            x = MARGEN_LATERAL + i * ancho_carril
+            y = -self.espacio_carril + self.y
+            while y < ALTO:
+                pygame.draw.rect(pantalla, BLANCO, (x - self.ancho_carril//2, y, self.ancho_carril, 30))
+                y += self.espacio_carril
             
-        # Dibujar líneas laterales blancas continuas
+        # Dibujar líneas laterales amarillas continuas
         # Línea izquierda
-        pygame.draw.rect(pantalla, BLANCO, (self.margen_lateral, 0, self.ancho_carril, ALTO))
+        pygame.draw.rect(pantalla, AMARILLO, (MARGEN_LATERAL, 0, self.ancho_carril, ALTO))
         # Línea derecha
-        pygame.draw.rect(pantalla, BLANCO, (ANCHO - self.margen_lateral - self.ancho_carril, 0, self.ancho_carril, ALTO))
+        pygame.draw.rect(pantalla, AMARILLO, (ANCHO - MARGEN_LATERAL - self.ancho_carril, 0, self.ancho_carril, ALTO))
 
 # Botón para el menú
 class Boton:
@@ -241,18 +264,34 @@ class Boton:
         else:
             self.color_actual = self.color
 
+# Clase para el color del puntaje (azul fijo)
+class ColorPuntaje:
+    def __init__(self):
+        # Color azul fijo para los textos informativos
+        self.color_azul = (30, 144, 255)  # Azul dodger (mismo que el auto)
+        
+    def actualizar(self, puntuacion):
+        # Siempre devuelve el mismo color azul
+        return self.color_azul
+
 # Clase para manejar el juego
 class Juego:
     def __init__(self):
         self.estado = "menu"  # Estados: menu, jugando, game_over
         self.auto = Auto()
         self.obstaculos = []
-        self.carretera = Carretera()
+        self.carretera = Carretera(num_carriles=NUM_CARRILES)
         self.puntuacion = 0
         self.mejor_puntuacion = 0
+        self.nivel = 1
+        self.autos_esquivados = 0  # Contador para autos esquivados en el nivel actual
+        self.autos_para_siguiente_nivel = 5  # Número de autos necesarios para subir de nivel
         self.tiempo_ultimo_obstaculo = 0
         self.intervalo_obstaculos = 1500  # milisegundos base
         self.reloj = pygame.time.Clock()
+        self.tiempo_ultima_tecla = 0  # Para controlar la frecuencia de movimiento
+        self.delay_tecla = 180  # Milisegundos de retraso entre pulsaciones de tecla (más rápido)
+        self.color_puntaje = ColorPuntaje()
         
         # Crear botones para el menú
         ancho_boton = 200
@@ -270,10 +309,13 @@ class Juego:
         self.auto = Auto()
         self.obstaculos = []
         self.puntuacion = 0
+        self.nivel = 1
+        self.autos_esquivados = 0
         self.tiempo_ultimo_obstaculo = pygame.time.get_ticks()
         
     def manejar_eventos(self):
         pos_mouse = pygame.mouse.get_pos()
+        tiempo_actual = pygame.time.get_ticks()
         
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
@@ -289,6 +331,16 @@ class Juego:
                 elif self.estado == "game_over":
                     if self.boton_menu.esta_sobre(pos_mouse):
                         self.estado = "menu"
+            
+            # Control de movimiento por teclas (con retraso para evitar movimientos continuos)
+            if evento.type == pygame.KEYDOWN and self.estado == "jugando":
+                if tiempo_actual - self.tiempo_ultima_tecla > self.delay_tecla:
+                    if evento.key == pygame.K_LEFT:
+                        self.auto.mover("izquierda")
+                        self.tiempo_ultima_tecla = tiempo_actual
+                    elif evento.key == pygame.K_RIGHT:
+                        self.auto.mover("derecha")
+                        self.tiempo_ultima_tecla = tiempo_actual
         
         # Actualizar botones
         if self.estado == "menu":
@@ -297,15 +349,10 @@ class Juego:
         elif self.estado == "game_over":
             self.boton_menu.actualizar(pos_mouse)
             
-        # Manejar controles durante el juego
-        if self.estado == "jugando":
-            teclas = pygame.key.get_pressed()
-            if teclas[pygame.K_LEFT]:
-                self.auto.mover("izquierda")
-            if teclas[pygame.K_RIGHT]:
-                self.auto.mover("derecha")
-            if teclas[pygame.K_ESCAPE]:
-                self.estado = "menu"
+        # Manejar escape para salir al menú
+        teclas = pygame.key.get_pressed()
+        if teclas[pygame.K_ESCAPE] and self.estado == "jugando":
+            self.estado = "menu"
             
         return True
     
@@ -313,34 +360,28 @@ class Juego:
         if self.estado != "jugando":
             return
             
-        # Actualizar carretera con el factor de dificultad basado en la puntuación
-        self.carretera.actualizar(self.puntuacion)
+        # Actualizar carretera con el nivel actual
+        self.carretera.actualizar(self.nivel)
         
-        # Calcular intervalo de obstáculos (disminuye según aumenta la puntuación)
-        intervalo_actual = max(self.intervalo_obstaculos - (self.puntuacion * 10), 500)
+        # Calcular intervalo de obstáculos (disminuye según aumenta el nivel)
+        intervalo_actual = max(self.intervalo_obstaculos - (self.nivel * 100), 500)
         
         # Crear nuevos obstáculos
         tiempo_actual = pygame.time.get_ticks()
         if tiempo_actual - self.tiempo_ultimo_obstaculo > intervalo_actual:
-            # Agregamos aleatoriedad en la generación de obstáculos
-            # A veces generamos 1 y a veces 2 obstáculos a la vez
-            num_obstaculos = random.choices([1, 2], weights=[70, 30])[0]
+            # Ahora generamos 1-3 obstáculos a la vez en diferentes carriles
+            num_obstaculos = random.choices([1, 2, 3], weights=[60 - min(self.nivel * 10, 40), 
+                                                               min(30 + self.nivel * 3, 50), 
+                                                               min(10 + self.nivel * 2, 30)])[0]
             
-            # Crear los obstáculos asegurándose que no se superpongan
-            obstaculos_nuevos = []
-            for _ in range(num_obstaculos):
-                nuevo_obstaculo = Obstaculo(5, self.puntuacion)
-                
-                # Verificar que no se superponga con otros obstáculos nuevos
-                es_valido = True
-                for obs in obstaculos_nuevos:
-                    if abs(nuevo_obstaculo.x - obs.x) < nuevo_obstaculo.ancho:
-                        es_valido = False
-                        break
-                
-                if es_valido:
-                    obstaculos_nuevos.append(nuevo_obstaculo)
-                    self.obstaculos.append(nuevo_obstaculo)
+            # Seleccionar carriles al azar sin repetir
+            carriles_disponibles = list(range(NUM_CARRILES))
+            random.shuffle(carriles_disponibles)
+            
+            for i in range(min(num_obstaculos, len(carriles_disponibles))):
+                carril = carriles_disponibles[i]
+                nuevo_obstaculo = Obstaculo(5, self.nivel, carril)
+                self.obstaculos.append(nuevo_obstaculo)
             
             self.tiempo_ultimo_obstaculo = tiempo_actual
             
@@ -359,6 +400,12 @@ class Juego:
             if obstaculo.fuera_de_pantalla():
                 obstaculos_a_eliminar.append(obstaculo)
                 self.puntuacion += 1
+                self.autos_esquivados += 1
+                
+                # Verificar si cambia de nivel
+                if self.autos_esquivados >= self.autos_para_siguiente_nivel:
+                    self.nivel += 1
+                    self.autos_esquivados = 0
                 
         # Eliminar obstáculos
         for obstaculo in obstaculos_a_eliminar:
@@ -398,9 +445,23 @@ class Juego:
         for obstaculo in self.obstaculos:
             obstaculo.dibujar(PANTALLA)
         
+        # Obtener el color azul fijo para todos los textos informativos
+        color_azul = self.color_puntaje.actualizar(self.puntuacion)
+        
+        # Posición X para alinear los textos a la derecha
+        pos_x = ANCHO - 240
+        
         # Dibujar puntuación
-        texto_puntuacion = FUENTE_PEQUEÑA.render(f"Puntuación: {self.puntuacion}", True, BLANCO)
-        PANTALLA.blit(texto_puntuacion, (10, 10))
+        texto_puntuacion = FUENTE_PEQUEÑA.render(f"Puntuación: {self.puntuacion}", True, color_azul)
+        PANTALLA.blit(texto_puntuacion, (pos_x, 10))
+        
+        # Dibujar nivel actual
+        texto_nivel = FUENTE_PEQUEÑA.render(f"Nivel: {self.nivel}", True, color_azul)
+        PANTALLA.blit(texto_nivel, (pos_x, 50))
+        
+        # Dibujar progreso al siguiente nivel
+        texto_progreso = FUENTE_PEQUEÑA.render(f"Progreso: {self.autos_esquivados}/{self.autos_para_siguiente_nivel}", True, color_azul)
+        PANTALLA.blit(texto_progreso, (pos_x, 90))
     
     def dibujar_game_over(self):
         # Dibujar fondo semi-transparente
@@ -414,7 +475,11 @@ class Juego:
         
         # Puntuación final
         texto_final = FUENTE_MEDIANA.render(f"Puntuación final: {self.puntuacion}", True, BLANCO)
-        PANTALLA.blit(texto_final, (ANCHO//2 - texto_final.get_width()//2, 250))
+        PANTALLA.blit(texto_final, (ANCHO//2 - texto_final.get_width()//2, 220))
+        
+        # Nivel alcanzado
+        texto_nivel = FUENTE_PEQUEÑA.render(f"Nivel alcanzado: {self.nivel}", True, VERDE)
+        PANTALLA.blit(texto_nivel, (ANCHO//2 - texto_nivel.get_width()//2, 270))
         
         # Mejor puntuación
         texto_mejor = FUENTE_PEQUEÑA.render(f"Mejor puntuación: {self.mejor_puntuacion}", True, VERDE)
